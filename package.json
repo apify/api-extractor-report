@@ -5,18 +5,26 @@
     "type": "module",
     "license": "Apache-2.0",
     "bin": {
-        "api-extractor-report": "./src/cli.mjs"
+        "api-extractor-report": "./dist/run.js"
     },
     "files": [
+        "dist",
         "src",
         "api-extractor.base.json"
     ],
     "engines": {
-        "node": ">=22.6.0"
+        "node": ">=20.11.0"
     },
     "dependencies": {
         "@microsoft/api-extractor": "^7.58.9",
         "globby": "^15.0.0",
         "typescript": "^6.0.0"
+    },
+    "scripts": {
+        "build": "tsc",
+        "prepare": "tsc"
+    },
+    "devDependencies": {
+        "@types/node": "^22.0.0"
     }
 }
