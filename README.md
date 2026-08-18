@@ -4,7 +4,7 @@ Generates a per-package map of the public type-level interface of every publisha
 
 It wraps [API Extractor](https://api-extractor.com/) and fixes up the places where its output does not describe exactly the surface it maps: unused imports left behind by the `@public` trim are pruned, symbols the public API references but the entry point never exports are emitted as non-exported declarations with a banner, and a `@public` signature referencing an `@internal` type fails the run as a genuine tagging bug. See the comment at the top of `src/run.ts` for the full rationale.
 
-The entry point is TypeScript, run directly by Node's built-in type stripping — there is no build step, but Node 22.18 or newer is required.
+The entry point is TypeScript, run directly by node's built-in type stripping — there is no build step. That needs node 22.18 or newer; on 22.6 to 22.17 the bin re-runs itself with `--experimental-strip-types`, and anything older is rejected with a clear message rather than an `ERR_UNKNOWN_FILE_EXTENSION` stack trace.
 
 ## Usage
 
