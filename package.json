@@ -1,0 +1,22 @@
+{
+    "name": "api-extractor-report",
+    "version": "1.0.0",
+    "description": "Generates and verifies committed per-package public API surface reports for a TypeScript monorepo.",
+    "type": "module",
+    "license": "Apache-2.0",
+    "bin": {
+        "api-extractor-report": "./src/run.ts"
+    },
+    "files": [
+        "src",
+        "api-extractor.base.json"
+    ],
+    "engines": {
+        "node": ">=22.18.0"
+    },
+    "dependencies": {
+        "@microsoft/api-extractor": "^7.58.9",
+        "globby": "^15.0.0",
+        "typescript": "^6.0.0"
+    }
+}
