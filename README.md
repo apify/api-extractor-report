@@ -2,9 +2,9 @@
 
 Generates a per-package map of the public type-level interface of every publishable package in a TypeScript monorepo, committed to `docs/public-api/<package>.api.md`. Those reports are where a project promises backwards compatibility, so any change to them shows up in review. Run without arguments to regenerate the reports, or with `--verify` to fail (and print the surface diff) when a committed report is out of date.
 
-It wraps [API Extractor](https://api-extractor.com/) and fixes up the places where its output does not describe exactly the surface it maps: unused imports left behind by the `@public` trim are pruned, symbols the public API references but the entry point never exports are emitted as non-exported declarations with a banner, and a `@public` signature referencing an `@internal` type fails the run as a genuine tagging bug. See the comment at the top of `src/run.ts` for the full rationale.
+It wraps [API Extractor](https://api-extractor.com/) and fixes up the places where its output does not describe exactly the surface it maps: unused imports left behind by the `@public` trim are pruned, symbols the public API references but the entry point never exports are emitted as non-exported declarations with a banner, and a `@public` signature referencing an `@internal` type fails the run as a genuine tagging bug. See the comment at the top of `src/run.js` for the full rationale.
 
-The entry point is TypeScript, compiled by `tsc` from the `prepare` script when the package is installed — node's type stripping cannot be used here, since it is disabled for files under `node_modules`.
+The entry point is plain JavaScript, so there is no build or install step to run it.
 
 ## Usage
 
@@ -16,12 +16,6 @@ npx github:apify/api-extractor-report --verify   # fail if they are out of date
 ```
 
 It expects each package to be built (`dist/index.d.ts` present) before it runs.
-
-pnpm blocks install scripts by default, so under `pnpm dlx` the `prepare` build has to be allowed explicitly:
-
-```bash
-pnpm dlx --allow-build=api-extractor-report github:apify/api-extractor-report --verify
-```
 
 ## Arguments
 

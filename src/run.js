@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, relative, resolve } from 'node:path';
 
-import { Extractor, ExtractorConfig, type IConfigFile } from '@microsoft/api-extractor';
+import { Extractor, ExtractorConfig } from '@microsoft/api-extractor';
 import { globbySync } from 'globby';
 import ts from 'typescript';
 
@@ -51,7 +51,7 @@ import ts from 'typescript';
  * as workflow commands (`::error::`) so they show up as inline annotations in the CI run.
  */
 
-const flag = (name: string, fallback: string) =>
+const flag = (name, fallback) =>
     process.argv.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3) ?? fallback;
 
 // Every path is resolved against the repository the extractor is invoked in, so the tool can be
@@ -64,7 +64,7 @@ const dtsGlob = `${packagesDir}/*/dist/**/*.d.ts`;
 // script (e.g. `pnpm api:extract`) and wants that name in the failure message instead.
 const extractCommand = flag('extract-command', 'npx github:apify/api-extractor-report');
 const baseConfigPath = resolve(import.meta.dirname, '..', 'api-extractor.base.json');
-const baseConfig = JSON.parse(readFileSync(baseConfigPath, 'utf8')) as IConfigFile;
+const baseConfig = JSON.parse(readFileSync(baseConfigPath, 'utf8'));
 const reportDir = flag('reports', 'docs/public-api');
 const reportFolder = resolve(root, reportDir);
 // API Extractor writes the "public" variant to a `.public.api.md` staging file here; we then
@@ -82,8 +82,8 @@ const github = process.argv.includes('--github')
 
 // GitHub workflow commands must escape `%`, `\r` and `\n` in the message. See
 // https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands
-const ghEscape = (message: string) => message.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
-const ghCommand = (kind: 'error' | 'warning', message: string) => {
+const ghEscape = (message) => message.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+const ghCommand = (kind, message) => {
     if (github) console.log(`::${kind}::${ghEscape(message)}`);
 };
 
@@ -115,44 +115,35 @@ const EXCLUDED = new Set(flag('exclude', '').split(',').filter(Boolean));
 //     most of them concern symbols that never reach it (see `danglingReferences`).
 const INCOMPATIBLE_RELEASE_TAGS = 'ae-incompatible-release-tags';
 const FORGOTTEN_EXPORT = 'ae-forgotten-export';
-type AnalyzerMessageId = typeof INCOMPATIBLE_RELEASE_TAGS | typeof FORGOTTEN_EXPORT;
 
 /** Pulls `Foo` out of `The symbol "Foo" needs to be exported by the entry point index.d.ts`. */
-const quotedSymbol = (text: string) => text.match(/"([^"]+)"/)?.[1] ?? text;
-
-interface PackageManifest {
-    name: string;
-    private?: boolean;
-    types?: string;
-    exports?: Record<string, string | { types?: string }>;
-}
+const quotedSymbol = (text) => text.match(/"([^"]+)"/)?.[1] ?? text;
 
 const packageJsonPaths = globbySync(packagesGlob, { cwd: root, absolute: true }).sort();
 
-function manifest(pkgJsonPath: string): PackageManifest {
-    return JSON.parse(readFileSync(pkgJsonPath, 'utf8')) as PackageManifest;
+function manifest(pkgJsonPath) {
+    return JSON.parse(readFileSync(pkgJsonPath, 'utf8'));
 }
 
-function dtsEntry(pkgDir: string, pkg: PackageManifest): string | undefined {
+function dtsEntry(pkgDir, pkg) {
     const dot = pkg.exports?.['.'];
     const candidate = (typeof dot === 'object' ? dot.types : undefined) ?? pkg.types ?? './dist/index.d.ts';
     const full = resolve(pkgDir, candidate);
     return existsSync(full) ? full : undefined;
 }
 
-const sanitizeDts = (content: string) =>
+const sanitizeDts = (content) =>
     content
         .split('\n')
         .filter((line) => !TS_IGNORE_LINE.test(line))
         .join('\n')
         .replace(IGNORE_TAG, '$1$2@internal');
 
-type ImportStatement = ts.ImportDeclaration | ts.ImportEqualsDeclaration;
-const isImport = (node: ts.Node): node is ImportStatement =>
+const isImport = (node) =>
     ts.isImportDeclaration(node) || ts.isImportEqualsDeclaration(node);
 
 /** Local binding names introduced by an import statement (`[]` for a side-effect import). */
-function importBindings(node: ImportStatement): string[] {
+function importBindings(node) {
     if (ts.isImportEqualsDeclaration(node)) return [node.name.text];
     const clause = node.importClause;
     if (!clause) return [];
@@ -179,7 +170,7 @@ function importBindings(node: ImportStatement): string[] {
  * `import X = require(...)`), and usages from real identifier tokens — so a name occurring
  * only in a string literal or a `// Warning:` comment correctly does not count as a use.
  */
-function parseReport(report: string): { lines: string[]; open: number; close: number; source: ts.SourceFile } | undefined {
+function parseReport(report) {
     const lines = report.split('\n');
     // The report is a fixed markdown skeleton wrapping a single ```ts fence.
     const open = lines.indexOf('```ts');
@@ -196,7 +187,7 @@ function parseReport(report: string): { lines: string[]; open: number; close: nu
     // `parseDiagnostics` is internal, but there is no public per-file equivalent that doesn't
     // require a whole Program. A report that doesn't parse means our assumptions are broken,
     // so skip the analysis rather than act on a half-understood tree.
-    const diagnostics = (source as unknown as { parseDiagnostics?: readonly ts.Diagnostic[] }).parseDiagnostics;
+    const diagnostics = source.parseDiagnostics;
     if (diagnostics?.length) {
         const message = `report did not parse (${diagnostics.length} syntax errors) — skipping import pruning and the dangling-reference check`;
         console.warn(`! ${message}`);
@@ -206,7 +197,7 @@ function parseReport(report: string): { lines: string[]; open: number; close: nu
     return { lines, open, close, source };
 }
 
-function pruneUnusedImports(report: string): string {
+function pruneUnusedImports(report) {
     const parsed = parseReport(report);
     if (!parsed) return report;
     const { lines, open, close, source } = parsed;
@@ -214,8 +205,8 @@ function pruneUnusedImports(report: string): string {
     const imports = source.statements.filter(isImport);
     if (imports.length === 0) return report;
 
-    const used = new Set<string>();
-    const collect = (node: ts.Node) => {
+    const used = new Set();
+    const collect = (node) => {
         // Skip the import statements themselves so a binding never counts as its own usage.
         if (isImport(node)) return;
         if (ts.isIdentifier(node)) used.add(node.text);
@@ -225,14 +216,14 @@ function pruneUnusedImports(report: string): string {
 
     // Offset back into the surrounding markdown; `getStart` skips leading trivia so we never
     // swallow a comment sitting above an import.
-    const lineOf = (position: number) => open + 1 + source.getLineAndCharacterOfPosition(position).line;
+    const lineOf = (position) => open + 1 + source.getLineAndCharacterOfPosition(position).line;
     const unused = imports.filter((node) => {
         const bindings = importBindings(node);
         return bindings.length > 0 && bindings.every((binding) => !used.has(binding));
     });
     if (unused.length === 0) return report;
 
-    const dropped = new Set<number>();
+    const dropped = new Set();
     for (const node of unused) {
         for (let line = lineOf(node.getStart(source)); line <= lineOf(node.getEnd()); line++) dropped.add(line);
     }
@@ -260,7 +251,7 @@ function pruneUnusedImports(report: string): string {
  * (`@crawlee/utils`' `social` namespace and all its members). Only symbols API Extractor could
  * not export are candidates, so nothing that is genuinely reachable can be dropped.
  */
-function pruneDeadForgottenDeclarations(report: string, forgotten: ReadonlySet<string>): string {
+function pruneDeadForgottenDeclarations(report, forgotten) {
     if (forgotten.size === 0) return report;
     const parsed = parseReport(report);
     if (!parsed) return report;
@@ -269,8 +260,8 @@ function pruneDeadForgottenDeclarations(report: string, forgotten: ReadonlySet<s
     // Positions, not counts: a declaration must not keep itself alive. Backend classes here
     // name themselves (`static create(): Promise<DatasetBackend>`), so a plain occurrence count
     // would never let one go.
-    const occurrences = new Map<string, number[]>();
-    const record = (node: ts.Node) => {
+    const occurrences = new Map();
+    const record = (node) => {
         // Only genuine references count. `storage.DatasetBackend` on an unrelated method must not
         // keep the local `DatasetBackend` class alive, and nor must a member of the same name.
         if (ts.isIdentifier(node) && !isDeclarationName(node)) {
@@ -288,11 +279,11 @@ function pruneDeadForgottenDeclarations(report: string, forgotten: ReadonlySet<s
         if (modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) return false;
         const names = ts.isVariableStatement(statement)
             ? statement.declarationList.declarations.map((declaration) => declaration.name)
-            : [(statement as { name?: ts.Node }).name];
+            : [statement.name];
         if (names.length === 0 || !names.every((name) => name && ts.isIdentifier(name))) return false;
         const from = statement.getStart(source);
         const to = statement.getEnd();
-        return (names as ts.Identifier[]).every(
+        return names.every(
             (name) =>
                 forgotten.has(name.text)
                 && !(occurrences.get(name.text) ?? []).some((position) => position < from || position > to),
@@ -300,8 +291,8 @@ function pruneDeadForgottenDeclarations(report: string, forgotten: ReadonlySet<s
     });
     if (dead.length === 0) return report;
 
-    const lineOf = (position: number) => open + 1 + source.getLineAndCharacterOfPosition(position).line;
-    const dropped = new Set<number>();
+    const lineOf = (position) => open + 1 + source.getLineAndCharacterOfPosition(position).line;
+    const dropped = new Set();
     for (const statement of dead) {
         // Take the `// @public (undocumented)` banner API Extractor writes above the declaration
         // with it. Ask for the actual comment ranges rather than working back from
@@ -322,7 +313,7 @@ function pruneDeadForgottenDeclarations(report: string, forgotten: ReadonlySet<s
  * (dropping a declaration orphans the imports it used), so this runs to a fixed point. It
  * always terminates — every pass that changes anything strictly removes lines.
  */
-function pruneReport(report: string, forgotten: ReadonlySet<string>): string {
+function pruneReport(report, forgotten) {
     for (let current = report; ; ) {
         const next = pruneUnusedImports(pruneDeadForgottenDeclarations(current, forgotten));
         if (next === current) return current;
@@ -341,21 +332,21 @@ const NOT_EXPORTED_BANNER = '// Not exported by the entry point; reachable only 
  * their *shape* is part of the surface we promise not to break, but their *name* is not
  * something a consumer can import.
  */
-function annotateForgottenDeclarations(report: string, forgotten: ReadonlySet<string>): string {
+function annotateForgottenDeclarations(report, forgotten) {
     if (forgotten.size === 0) return report;
     const parsed = parseReport(report);
     if (!parsed) return report;
     const { lines, open, source } = parsed;
 
-    const lineOf = (position: number) => open + 1 + source.getLineAndCharacterOfPosition(position).line;
-    const marked = new Set<number>();
+    const lineOf = (position) => open + 1 + source.getLineAndCharacterOfPosition(position).line;
+    const marked = new Set();
     for (const statement of source.statements) {
         if (isImport(statement) || ts.isExportDeclaration(statement)) continue;
         const modifiers = ts.canHaveModifiers(statement) ? ts.getModifiers(statement) : undefined;
         if (modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) continue;
         const names = ts.isVariableStatement(statement)
             ? statement.declarationList.declarations.map((declaration) => declaration.name)
-            : [(statement as { name?: ts.Node }).name];
+            : [statement.name];
         if (!names.length || !names.every((name) => name && ts.isIdentifier(name) && forgotten.has(name.text))) continue;
         // Sit above API Extractor's own banner rather than replacing it, so its markers survive.
         const comments = ts.getLeadingCommentRanges(source.text, statement.getFullStart()) ?? [];
@@ -371,8 +362,8 @@ function annotateForgottenDeclarations(report: string, forgotten: ReadonlySet<st
 }
 
 /** True when the identifier names something (a declaration, member or property) rather than referring to it. */
-function isDeclarationName(id: ts.Identifier): boolean {
-    const parent = id.parent as ts.Node | undefined;
+function isDeclarationName(id) {
+    const parent = id.parent;
     if (!parent) return false;
     // `a.b` / `A.B` — only the leftmost part resolves against the report's own scope.
     if (ts.isQualifiedName(parent) && parent.right === id) return true;
@@ -380,12 +371,12 @@ function isDeclarationName(id: ts.Identifier): boolean {
     // `export { x }` (as a `declare namespace` uses to re-expose its members) names the local
     // binding, so it is a reference to it rather than a declaration of it.
     if (ts.isExportSpecifier(parent)) return false;
-    return 'name' in parent && (parent as { name?: ts.Node }).name === id;
+    return 'name' in parent && parent.name === id;
 }
 
 /** Names the report introduces itself: top-level declarations plus whatever the imports bind. */
-function declaredNames(source: ts.SourceFile): Set<string> {
-    const names = new Set<string>();
+function declaredNames(source) {
+    const names = new Set();
     for (const statement of source.statements) {
         if (isImport(statement)) {
             for (const binding of importBindings(statement)) names.add(binding);
@@ -394,7 +385,7 @@ function declaredNames(source: ts.SourceFile): Set<string> {
                 if (ts.isIdentifier(declaration.name)) names.add(declaration.name.text);
             }
         } else {
-            const name = (statement as { name?: ts.Node }).name;
+            const name = statement.name;
             if (name && ts.isIdentifier(name)) names.add(name.text);
         }
     }
@@ -415,15 +406,15 @@ function declaredNames(source: ts.SourceFile): Set<string> {
  * never make it into the report — harmless, and not something the source should be contorted to
  * fix. Checking the finished artifact instead of the raw message list keeps only the real ones.
  */
-function danglingReferences(report: string, candidates: Iterable<string>): string[] {
+function danglingReferences(report, candidates) {
     const wanted = new Set(candidates);
     if (wanted.size === 0) return [];
     const parsed = parseReport(report);
     if (!parsed) return [];
 
     const declared = declaredNames(parsed.source);
-    const dangling = new Set<string>();
-    const visit = (node: ts.Node) => {
+    const dangling = new Set();
+    const visit = (node) => {
         if (ts.isIdentifier(node) && wanted.has(node.text) && !declared.has(node.text) && !isDeclarationName(node)) {
             dangling.add(node.text);
         }
@@ -433,14 +424,14 @@ function danglingReferences(report: string, candidates: Iterable<string>): strin
     return [...dangling].sort();
 }
 
-const reportBaseName = (name: string) => name.replace('@', '').replace('/', '-');
-const reportFileName = (name: string) => `${reportBaseName(name)}.api.md`;
+const reportBaseName = (name) => name.replace('@', '').replace('/', '-');
+const reportFileName = (name) => `${reportBaseName(name)}.api.md`;
 // With `reportVariants: ['public']`, API Extractor appends the variant kind to the file name,
 // producing `<base>.public.api.md`. We stage that, then promote it to `<base>.api.md`.
-const stagedFileName = (name: string) => `${reportBaseName(name)}.public.api.md`;
+const stagedFileName = (name) => `${reportBaseName(name)}.public.api.md`;
 
 /** Lazily built sanitized mirror of the dist tree, with a `@crawlee/*` -> mirror paths map. */
-let mirror: { packages: string; paths: Record<string, string[]> } | undefined;
+let mirror;
 function getMirror() {
     if (mirror) return mirror;
     rmSync(mirrorRoot, { recursive: true, force: true });
@@ -450,7 +441,7 @@ function getMirror() {
         writeFileSync(target, sanitizeDts(readFileSync(file, 'utf8')));
     }
     const packages = resolve(mirrorRoot, packagesDir);
-    const paths: Record<string, string[]> = {};
+    const paths = {};
     for (const pkgJsonPath of packageJsonPaths) {
         const dir = resolve(packages, relative(resolve(root, packagesDir), dirname(pkgJsonPath)));
         if (existsSync(resolve(dir, 'dist/index.d.ts'))) paths[manifest(pkgJsonPath).name] = [resolve(dir, 'dist/index.d.ts')];
@@ -459,7 +450,7 @@ function getMirror() {
     return mirror;
 }
 
-function extract(pkgDir: string, pkgJsonPath: string, entry: string, paths?: Record<string, string[]>) {
+function extract(pkgDir, pkgJsonPath, entry, paths) {
     const name = manifest(pkgJsonPath).name;
     const config = ExtractorConfig.prepare({
         configObjectFullPath: baseConfigPath,
@@ -493,7 +484,7 @@ function extract(pkgDir: string, pkgJsonPath: string, entry: string, paths?: Rec
     });
     // Collected rather than printed, so `main` decides severity and the output stays grouped
     // per package. Duplicates are common (one message per overload/declaration), hence the Set.
-    const diagnostics: Record<AnalyzerMessageId, Set<string>> = {
+    const diagnostics = {
         [INCOMPATIBLE_RELEASE_TAGS]: new Set(),
         [FORGOTTEN_EXPORT]: new Set(),
     };
@@ -503,7 +494,7 @@ function extract(pkgDir: string, pkgJsonPath: string, entry: string, paths?: Rec
         localBuild: true,
         showVerboseMessages: false,
         messageCallback: (message) => {
-            diagnostics[message.messageId as AnalyzerMessageId]?.add(message.text);
+            diagnostics[message.messageId]?.add(message.text);
             // Suppress API Extractor's own console output; everything else is already `none`.
             message.handled = true;
         },
@@ -527,14 +518,12 @@ function extract(pkgDir: string, pkgJsonPath: string, entry: string, paths?: Rec
     return { apiReportChanged, committedPath, stagedPath, diagnostics, unexported };
 }
 
-type ExtractResult = ReturnType<typeof extract>;
-
 // Render the surface diff between the committed report and the freshly staged one, so a
 // failing `--verify` shows *what* changed rather than only telling you to re-run `api:extract`.
 // Uses `git diff --no-index` (git is always present in CI) to avoid a diffing dependency. Runs
 // from `root` with repo-relative paths and `committed`/`extracted` prefixes so the diff header
 // reads cleanly instead of dumping absolute, machine-specific paths.
-function reportDiff(committedPath: string, stagedPath: string): string {
+function reportDiff(committedPath, stagedPath) {
     const result = spawnSync(
         'git',
         [
@@ -571,7 +560,7 @@ function main() {
     // We rewrite the `.d.ts` files in place for the duration of the run (restored after) to:
     //   1. strip the `// @ts-ignore` lines the build injects, which crash Extractor's AST walker;
     //   2. rewrite `@ignore` -> `@internal` so those members get trimmed from the public report.
-    const originals = new Map<string, string>();
+    const originals = new Map();
     for (const file of globbySync(dtsGlob, { cwd: root, absolute: true })) {
         const content = readFileSync(file, 'utf8');
         const sanitized = sanitizeDts(content);
@@ -599,7 +588,7 @@ function main() {
             // Up to date iff the committed report didn't change, and the report is internally
             // consistent (no @public symbol referencing a trimmed @internal one). Both modes
             // enforce consistency: unlike an out-of-date report, regenerating can't fix it.
-            const ok = (result: ExtractResult, via = '') => {
+            const ok = (result, via = '') => {
                 if (result.unexported.length > 0) {
                     const message = `${pkg.name}: referenced by the public API but not exported from the entry point: ${result.unexported.join(', ')} — export them, or keep them out of the public signature`;
                     console.error(`✗ ${message}`);
@@ -644,7 +633,7 @@ function main() {
                 try {
                     ok(viaMirror(), ' (via mirror)');
                 } catch (err) {
-                    const message = `${pkg.name}: api-extractor crashed: ${(err as Error).message}`;
+                    const message = `${pkg.name}: api-extractor crashed: ${err.message}`;
                     console.error(`✗ ${message}`);
                     ghCommand('error', message);
                     failed++;
