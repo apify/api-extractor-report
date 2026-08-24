@@ -58,8 +58,11 @@ const flag = (name, fallback) =>
 // run from any repo (`npx github:apify/api-extractor-report`) without being installed into it.
 const root = process.cwd();
 const packagesDir = flag('packages', 'packages');
-const packagesGlob = `${packagesDir}/*/package.json`;
-const dtsGlob = `${packagesDir}/*/dist/**/*.d.ts`;
+// A single-package repository maps the package at `--packages` itself (`--packages=.` for the
+// repository root); a monorepo maps every package directory below it.
+const single = existsSync(resolve(root, packagesDir, 'package.json'));
+const packagesGlob = single ? `${packagesDir}/package.json` : `${packagesDir}/*/package.json`;
+const dtsGlob = single ? `${packagesDir}/dist/**/*.d.ts` : `${packagesDir}/*/dist/**/*.d.ts`;
 // Printed when a report is out of date; the invoking repo usually wraps this tool in a package
 // script (e.g. `pnpm api:extract`) and wants that name in the failure message instead.
 const extractCommand = flag('extract-command', 'npx github:apify/api-extractor-report');
