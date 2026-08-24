@@ -19,6 +19,6 @@ It expects each package to be built (`dist/index.d.ts` present) before it runs.
 
 ## Arguments
 
-`--verify` checks the committed reports instead of rewriting them, `--packages=<dir>` points at the workspace directory holding the packages (default `packages`), `--reports=<dir>` sets where the reports are committed (default `docs/public-api`), `--exclude=<a,b>` skips packages by name, and `--extract-command=<cmd>` sets the command named in "report out of date" messages when the project wraps this tool in a package script. Private packages are always skipped.
+`--verify` checks the committed reports instead of rewriting them, `--packages=<dir>` points at the workspace directory holding the packages (default `packages`, or at the package itself in a single-package repository — `--packages=.` for one living at the repository root), `--reports=<dir>` sets where the reports are committed (default `docs/public-api`), `--exclude=<a,b>` skips packages by name, and `--extract-command=<cmd>` sets the command named in "report out of date" messages when the project wraps this tool in a package script. Private packages are always skipped.
 
 Failures are additionally emitted as GitHub Actions workflow commands when running in CI, so they appear as inline annotations; force this on or off with `--github` / `--no-github`.
