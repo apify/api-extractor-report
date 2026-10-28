@@ -15,7 +15,7 @@
         "node": ">=20.11.0"
     },
     "dependencies": {
-        "@microsoft/api-extractor": "^7.58.9",
+        "@microsoft/api-extractor": "^7.60.0",
         "globby": "^15.0.0",
         "typescript": "^6.0.0"
     }
